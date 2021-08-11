@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: springbootapp
+  namespace: devops-tools
+spec:
+  selector:
+    app: springbootapp
+  type: NodePort
+  ports:
+    - port: 9000
+      targetPort: 8080
+      name: appwebui

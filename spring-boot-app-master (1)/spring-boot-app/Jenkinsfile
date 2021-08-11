@@ -1,0 +1,116 @@
+
+def node = 'master'
+def k8s_node = 'k8s'
+def credentialsId = 'gitea'
+def git_url = 'http://192.168.50.10:32231/rupesh/spring-boot-app/'
+def message = '\n'
+def daysToKeepBuild = '60'
+def numToKeepBuild = '50'
+def tokentostart = 'abcdefghijkl'
+
+pipeline {   
+  agent {label "${node}"}    
+  triggers {         
+    GenericTrigger(        
+     genericVariables: [  
+      [key: 'ref', value: '$.ref']   
+     ],
+     causeString: 'Triggered on $ref',   
+     token: "${tokentostart}",        
+     printContributedVariables: false,   
+     printPostContent: false,   
+     silentResponse: false,    
+     regexpFilterText: '$ref', 
+     regexpFilterExpression: 'refs/heads/master'
+    )
+  }
+  stages {
+    stage('Git Checkout') {
+                    steps {
+                        script{
+                                echo 'Git checkout started'
+                                FAILED_STAGE=env.STAGE_NAME
+                                checkout changelog: false, poll: false, scm: [$class: 'GitSCM',
+                                branches: [[name: '*/master']], extensions: [], 
+                                userRemoteConfigs: [[credentialsId: "${credentialsId}", 
+                                url: "${git_url}"]]]
+                                properties([[$class: 'BuildDiscarderProperty', 
+                                strategy: [$class: 'LogRotator', artifactDaysToKeepStr: '', 
+                                artifactNumToKeepStr: '', daysToKeepStr: "${daysToKeepBuild}", 
+                                numToKeepStr: "${numToKeepBuild}"]]]);
+                                echo 'Git Checkout Successful.'
+                                message = "${message} Git Checkout Successful.\n"                    
+                        }}}
+
+    stage('Build') {
+                    steps {
+                        script{ 
+                                FAILED_STAGE=env.STAGE_NAME
+                                sh '''
+                                echo 'Build Process been started !!!'
+                                ./gradlew clean jib
+                                echo 'Build Process been Completed !!!'
+                                echo 'Docker image created and pushed to the docker-repo'
+                                '''
+                                message = "${message} Build Successful.\n"
+                        }}}
+
+    stage('Deploy') {
+                agent {label "k8s"}
+                    steps {
+                        script{
+                                FAILED_STAGE=env.STAGE_NAME
+                                sh '''
+                                APP_EXISTS=`kubectl get deploy -n devops-tools | grep springbootapp | wc -l`
+                                if [ ${APP_EXISTS} -eq 1 ];
+                                then
+                                    TOTAL_REVISION=`kubectl rollout history deploy springbootapp -n devops-tools | wc -l`
+                                    VER=$((TOTAL_REVISION-1))
+                                    VER=${VER}p
+                                    REVISION=`kubectl rollout history deploy springbootapp -n devops-tools | sed -n $VER | cut -d ' ' -f1`
+                                    echo "REVISION Number Before Deployment: ${REVISION}"
+                                else
+                                    echo "No Old Deployment Present"
+                                fi
+                                echo "--------------------------------------------------"
+                                echo "Get All Resources In K8s"
+                                kubectl get all -n devops-tools
+                                echo "--------------------------------------------------"
+                                echo "Deploy App"
+                                kubectl apply -f http://192.168.50.10:32231/rupesh/kubernetes/raw/branch/master/spring-boot-app.yml
+                                kubectl apply -f http://192.168.50.10:32231/rupesh/kubernetes/raw/branch/master/spring-boot-app-svc.yml
+                                sleep 10
+                                echo "--------------------------------------------------"
+                                echo "Get All Resources In K8s After Deployment"
+                                kubectl get all -n devops-tools
+                                echo "--------------------------------------------------"
+                                '''
+                                message = "${message} Deploy Successful.\n"
+                            }}}
+    stage('Test') {
+                    agent {label "k8s"}
+                    steps {
+                        script{
+                                FAILED_STAGE=env.STAGE_NAME
+                                sh '''
+                                
+                                TEST_CODE=`curl -I http://192.168.50.10:32045/ | sed -n '1p' | cut -d " " -f2`
+                                if [ ${TEST_CODE} -eq 200 ]
+                                then
+                                    echo "Application Tested Successfully."
+                                else
+                                    echo "Starting rollout"
+                                    
+                                    kubectl rollout history deploy springbootapp -n devops-tools
+                                    slackSend channel: 'test-channel', message: "Rollout Executed Successfully"
+                                fi                                    
+                                '''
+                                message = "${message} Deploy Successful.\n"
+                            }}}
+                            }
+
+        post  {  
+             success { slackSend channel: 'test-channel', message: "Successfully Executed Build_Number: ${env.BUILD_NUMBER}\n URL: ${env.JOB_URL}" }
+             failure {slackSend channel: 'test-channel', message: "${message}  \n FAILED_STAGE=${FAILED_STAGE} \n BUILD_NUMBER: ${env.BUILD_NUMBER} \n URL: ${env.JOB_URL}" }
+        }
+}

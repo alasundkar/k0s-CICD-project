@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: devops-tools
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea
+  template:
+    metadata:
+      labels:
+        app: gitea
+    spec:
+      containers:
+      - name: gitea
+        image: gitea/gitea:1.12.2
+        ports:
+        - containerPort: 3000
+          name: gitea-web
+        volumeMounts:
+        - mountPath: /data
+          name: gitea-volume
+        - mountPath: /etc/localtime
+          name: localtime-volume
+          readOnly: true
+        - mountPath: /etc/timezone
+          name: timezone-volume
+          readOnly: true
+      volumes:
+      - name: gitea-volume
+        hostPath:
+          path: /gitea
+      - name: localtime-volume
+        hostPath:
+          path: /etc/localtime

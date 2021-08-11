@@ -1,0 +1,32 @@
+####################################################################################################
+## Before Using This Script Make Sure Secret Is Already Created To Access Nexus-Docker-Repository ##
+####################################################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springbootapp
+  namespace: devops-tools
+spec:
+  replicas: 2
+  revisionHistoryLimit: 4
+  selector:
+    matchLabels:
+      app: springbootapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: springbootapp
+    spec:
+      imagePullSecrets:
+      - name: nexus-spring-boot-key
+      containers:
+      - name: springbootapp
+        image: 192.168.50.10:30700/spring-boot-app:latest
+        imagePullPolicy: Always
+      nodeSelector:
+        kubernetes.io/hostname: k8s-worker-1
