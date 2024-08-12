@@ -1,5 +1,5 @@
 - identifier: k8s-CICD-project-github
-  title: Some Title
+  title: testingPR withoutMerge
   team: []
   icon: DefaultBlueprint
   blueprint: githubPullRequest
